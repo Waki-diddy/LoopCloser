@@ -1,0 +1,11 @@
+# Secret files — never upload these
+.env
+token.json
+credentials.json
+
+# Mac junk files
+.DS_Store
+
+# Python junk
+__pycache__/
+*.pyc
