@@ -28,9 +28,18 @@ def get_gmail_service():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                "credentials.json", SCOPES
-            )
+            # check if running on Streamlit Cloud
+            if "GOOGLE_CREDENTIALS" in st.secrets:
+                import tempfile, json
+                creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+                    json.dump(creds_dict, f)
+                    tmp_path = f.name
+                flow = InstalledAppFlow.from_client_secrets_file(tmp_path, SCOPES)
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    "credentials.json", SCOPES
+                )
             creds = flow.run_local_server(port=0)
         with open("token.json", "w") as token:
             token.write(creds.to_json())
