@@ -45,7 +45,7 @@ def get_gmail_service():
         flow = Flow.from_client_secrets_file(
             creds_file, SCOPES, redirect_uri=REDIRECT_URI
         )
-        flow.fetch_token(code=params["code"])
+        flow.fetch_token(code=params["code"], include_client_id=True)
         creds = flow.credentials
         st.session_state["token"] = json.loads(creds.to_json())
         st.query_params.clear()
