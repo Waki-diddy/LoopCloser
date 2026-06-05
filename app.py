@@ -38,7 +38,6 @@ oauth2 = OAuth2Component(
     authorize_endpoint="https://accounts.google.com/o/oauth2/auth",
     token_endpoint="https://oauth2.googleapis.com/token",
     refresh_token_endpoint="https://oauth2.googleapis.com/token",
-    revoke_token_endpoint="https://oauth2.googleapis.com/revoke",
 )
 
 if "token" not in st.session_state:
