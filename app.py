@@ -41,15 +41,19 @@ def get_gmail_service():
     # check if Google just sent us back an auth code
     params = st.query_params
     if "code" in params:
-        creds_file = get_credentials_file()
-        flow = Flow.from_client_secrets_file(
-            creds_file, SCOPES, redirect_uri=REDIRECT_URI
-        )
-        flow.fetch_token(code=params["code"], include_client_id=True)
-        creds = flow.credentials
-        st.session_state["token"] = json.loads(creds.to_json())
+        code = params["code"]
+        if "used_code" not in st.session_state or st.session_state["used_code"] != code:
+            st.session_state["used_code"] = code
+            creds_file = get_credentials_file()
+            flow = Flow.from_client_secrets_file(
+                creds_file, SCOPES, redirect_uri=REDIRECT_URI
+            )
+            os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+            flow.fetch_token(code=code)
+            creds = flow.credentials
+            st.session_state["token"] = json.loads(creds.to_json())
         st.query_params.clear()
-        return build("gmail", "v1", credentials=creds)
+        st.rerun()
 
     # no token yet — show login button
     creds_file = get_credentials_file()
