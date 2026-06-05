@@ -1,4 +1,4 @@
-# ---- THE LOOP-CLOSER v5 — ONLINE FINAL ----
+# ---- THE LOOP-CLOSER v6 — STREAMLIT OAUTH ----
 import streamlit as st
 import anthropic
 import os
@@ -8,9 +8,9 @@ import tempfile
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+from streamlit_oauth import OAuth2Component
 
 # --- API KEY ---
 from dotenv import load_dotenv
@@ -18,56 +18,55 @@ load_dotenv()
 API_KEY = os.getenv("ANTHROPIC_API_KEY") or st.secrets.get("ANTHROPIC_API_KEY")
 
 # --- GMAIL SETUP ---
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES = "https://www.googleapis.com/auth/gmail.readonly"
 REDIRECT_URI = "https://loopcloser.streamlit.app/"
 
-def get_credentials_file():
-    # write credentials from secrets to a temp file
-    creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
-    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
-    json.dump(creds_dict, tmp)
-    tmp.close()
-    return tmp.name
+# --- PAGE CONFIG ---
+st.set_page_config(page_title="Loop-Closer", page_icon="🚪", layout="wide")
+st.title("🚪 The Loop-Closer")
+st.caption("Your AI inbox assistant — never miss a follow-up again.")
+st.divider()
 
-def get_gmail_service():
-    # check if we already have a token saved in session
-    if "token" in st.session_state:
-        creds = Credentials.from_authorized_user_info(
-            st.session_state["token"], SCOPES
-        )
-        if creds.valid:
-            return build("gmail", "v1", credentials=creds)
+# --- OAUTH LOGIN ---
+creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+client_id = creds_dict["web"]["client_id"]
+client_secret = creds_dict["web"]["client_secret"]
 
-    # check if Google just sent us back an auth code
-    params = st.query_params
-    if "code" in params:
-        code = params["code"]
-        if "used_code" not in st.session_state or st.session_state["used_code"] != code:
-            st.session_state["used_code"] = code
-            creds_file = get_credentials_file()
-            flow = Flow.from_client_secrets_file(
-                creds_file, SCOPES, redirect_uri=REDIRECT_URI
-            )
-            os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
-            flow.fetch_token(code=code)
-            creds = flow.credentials
-            st.session_state["token"] = json.loads(creds.to_json())
-        st.query_params.clear()
-        st.rerun()
+oauth2 = OAuth2Component(
+    client_id=client_id,
+    client_secret=client_secret,
+    authorize_endpoint="https://accounts.google.com/o/oauth2/auth",
+    token_endpoint="https://oauth2.googleapis.com/token",
+    refresh_token_endpoint="https://oauth2.googleapis.com/token",
+    revoke_token_endpoint="https://oauth2.googleapis.com/revoke",
+)
 
-    # no token yet — show login button
-    creds_file = get_credentials_file()
-    flow = Flow.from_client_secrets_file(
-        creds_file, SCOPES, redirect_uri=REDIRECT_URI
+if "token" not in st.session_state:
+    result = oauth2.authorize_button(
+        name="🔗 Connect Gmail",
+        redirect_uri=REDIRECT_URI,
+        scope=SCOPES,
+        key="gmail_auth",
+        extras_params={"access_type": "offline", "prompt": "consent"},
     )
-    auth_url, _ = flow.authorization_url(prompt="consent")
+    if result and "token" in result:
+        st.session_state["token"] = result["token"]
+        st.rerun()
+    else:
+        st.stop()
 
-    st.title("🚪 The Loop-Closer")
-    st.write("Your AI inbox assistant — never miss a follow-up again.")
-    st.divider()
-    st.subheader("Connect your Gmail to get started")
-    st.link_button("🔗 Connect Gmail", auth_url)
-    st.stop()
+# --- BUILD GMAIL SERVICE ---
+def get_gmail_service():
+    token = st.session_state["token"]
+    creds = Credentials(
+        token=token["access_token"],
+        refresh_token=token.get("refresh_token"),
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=client_id,
+        client_secret=client_secret,
+        scopes=[SCOPES],
+    )
+    return build("gmail", "v1", credentials=creds)
 
 def get_email_body(payload):
     if "parts" in payload:
@@ -156,16 +155,10 @@ def mark_as_open(email_id, notebook):
     if email_id not in notebook:
         notebook[email_id] = datetime.now().isoformat()
 
-# --- DASHBOARD ---
-st.set_page_config(page_title="Loop-Closer", page_icon="🚪", layout="wide")
-
-st.title("🚪 The Loop-Closer")
-st.caption("Your AI inbox assistant — never miss a follow-up again.")
-st.divider()
-
+# --- MAIN DASHBOARD ---
 notebook = load_notebook()
 
-with st.spinner("📬 Connecting to Gmail..."):
+with st.spinner("📬 Reading your Gmail..."):
     service = get_gmail_service()
     emails = get_recent_emails(service)
 
