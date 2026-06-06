@@ -14,6 +14,7 @@ from streamlit_oauth import OAuth2Component
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Loop-Closer", page_icon="🚪", layout="wide")
+st.markdown('<style>[data-testid="stMarkdownContainer"]>pre{display:none!important;}.stException{display:none!important;}</style>', unsafe_allow_html=True)
 
 # --- INJECT CUSTOM CSS ---
 st.markdown("""
