@@ -1,10 +1,9 @@
-# ---- THE LOOP-CLOSER v7 — REDESIGNED ----
+# ---- THE LOOP-CLOSER v6 — CLEAN ----
 import streamlit as st
 import anthropic
 import os
 import base64
 import json
-import tempfile
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from google.oauth2.credentials import Credentials
@@ -12,20 +11,7 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from streamlit_oauth import OAuth2Component
 
-# --- PAGE CONFIG ---
 st.set_page_config(page_title="Loop-Closer", page_icon="🚪", layout="wide")
-st.markdown('<style>[data-testid="stMarkdownContainer"]>pre{display:none!important;}.stException{display:none!important;}</style>', unsafe_allow_html=True)
-
-# --- INJECT CUSTOM CSS ---
-st.markdown("<style>body{background:#FFF4EB}#MainMenu,footer,header{visibility:hidden}.block-container{padding:0!important;max-width:100%!important}</style>", unsafe_allow_html=True)
-
-# --- NAVBAR ---
-st.markdown("""
-<div class="lc-nav">
-  <div class="lc-logo"><span class="lc-logo-dot"></span>Loop-Closer</div>
-  <span class="lc-nav-tag">AI Inbox</span>
-</div>
-""", unsafe_allow_html=True)
 
 # --- API KEY ---
 from dotenv import load_dotenv
@@ -40,16 +26,12 @@ creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
 client_id = creds_dict["web"]["client_id"]
 client_secret = creds_dict["web"]["client_secret"]
 
-# --- OAUTH LOGIN ---
-if "token" not in st.session_state:
-    st.markdown("""
-    <div class="lc-hero">
-      <p class="lc-hero-eyebrow">Never miss a follow-up again</p>
-      <h1 class="lc-hero-title">Your inbox,<br><span>intelligently sorted.</span></h1>
-      <p class="lc-hero-sub">Loop-Closer reads your Gmail and tells you exactly which conversations need your attention — and which don't.</p>
-    </div>
-    """, unsafe_allow_html=True)
+# --- PAGE ---
+st.title("🚪 The Loop-Closer")
+st.caption("Your AI inbox assistant — never miss a follow-up again.")
+st.divider()
 
+# --- OAUTH ---
 oauth2 = OAuth2Component(
     client_id=client_id,
     client_secret=client_secret,
@@ -59,15 +41,13 @@ oauth2 = OAuth2Component(
 )
 
 if "token" not in st.session_state:
-    st.markdown('<div class="lc-connect-wrap">', unsafe_allow_html=True)
     result = oauth2.authorize_button(
-        name="Connect Gmail",
+        name="🔗 Connect Gmail",
         redirect_uri=REDIRECT_URI,
         scope=SCOPES,
         key="gmail_auth",
         extras_params={"access_type": "offline", "prompt": "consent"},
     )
-    st.markdown('</div>', unsafe_allow_html=True)
     if result and "token" in result:
         st.session_state["token"] = result["token"]
         st.rerun()
@@ -170,95 +150,65 @@ def mark_as_open(email_id, notebook):
 # --- LOAD DATA ---
 notebook = load_notebook()
 
-st.markdown('<div class="lc-loading">Reading your inbox...</div>', unsafe_allow_html=True)
-
-service = get_gmail_service()
-emails = get_recent_emails(service)
+with st.spinner("📬 Reading your Gmail..."):
+    service = get_gmail_service()
+    emails = get_recent_emails(service)
 
 open_doors = []
 closed_doors = []
 
-for email in emails:
+progress = st.progress(0, text="🕵️ Analysing your emails...")
+for i, email in enumerate(emails):
     if is_open_door(email["subject"], email["body"]):
         mark_as_open(email["id"], notebook)
         email["days_waiting"] = get_days_waiting(email["id"], notebook)
         open_doors.append(email)
     else:
         closed_doors.append(email)
+    progress.progress((i + 1) / len(emails), text=f"🕵️ Analysed {i+1} of {len(emails)} emails...")
 
 save_notebook(notebook)
+progress.empty()
 
 # --- METRICS ---
-st.markdown(f"""
-<div class="lc-metrics">
-  <div class="lc-metric">
-    <div class="lc-metric-num" style="color:#3D1534">{len(open_doors)}</div>
-    <div class="lc-metric-label">Needs reply</div>
-  </div>
-  <div class="lc-metric">
-    <div class="lc-metric-num" style="color:#3E4B8E">{len(closed_doors)}</div>
-    <div class="lc-metric-label">All good</div>
-  </div>
-  <div class="lc-metric">
-    <div class="lc-metric-num" style="color:#A6BCC9">{len(emails)}</div>
-    <div class="lc-metric-label">Scanned</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+col1, col2, col3 = st.columns(3)
+col1.metric("🔴 Needs reply", len(open_doors))
+col2.metric("✅ All good", len(closed_doors))
+col3.metric("📧 Total scanned", len(emails))
+
+st.divider()
 
 # --- OPEN DOORS ---
-st.markdown('<div class="lc-section-title">🔴 Waiting for reply</div>', unsafe_allow_html=True)
-
+st.subheader("🔴 Still waiting on these...")
 if open_doors:
     for door in open_doors:
         days = door.get("days_waiting", 0)
-        if days >= 4:
-            card_class = "urgent"
-            badge_class = "urgent"
-            badge_text = f"{days} days — urgent"
-        elif days >= 2:
-            card_class = "warning"
-            badge_class = "warning"
-            badge_text = f"{days} days"
-        else:
-            card_class = "warning"
-            badge_class = "recent"
-            badge_text = "Recent"
-
-        preview_html = f'<div class="lc-card-preview">{door["body"][:120]}...</div>' if door.get("body") else ""
-
-        st.markdown(f"""
-        <div class="lc-card {card_class}">
-          <div class="lc-card-top">
-            <span class="lc-card-from">{door["from"][:50]}</span>
-            <span class="lc-card-badge {badge_class}">{badge_text}</span>
-          </div>
-          <div class="lc-card-subject">{door["subject"][:80]}</div>
-          <div class="lc-card-date">{door["date"][:22]}</div>
-          {preview_html}
-        </div>
-        """, unsafe_allow_html=True)
+        bell = "🚨" if days >= 4 else "🟡" if days >= 2 else "🔔"
+        urgency = f"URGENT — {days} days!" if days >= 4 else f"Getting old — {days} days" if days >= 2 else "Recent — keep an eye on this"
+        with st.expander(f"{bell} {door['from'][:50]} — {door['subject'][:60]}"):
+            st.write(f"**From:** {door['from']}")
+            st.write(f"**Subject:** {door['subject']}")
+            st.write(f"**Date:** {door['date']}")
+            if days >= 4:
+                st.error(f"🚨 {urgency}")
+            elif days >= 2:
+                st.warning(f"🟡 {urgency}")
+            else:
+                st.info(f"🔔 {urgency}")
+            if door['body']:
+                st.write(f"**Preview:** {door['body'][:200]}")
 else:
-    st.markdown('<div class="lc-card closed"><div class="lc-card-subject">🎉 Nothing to follow up on — you\'re all clear!</div></div>', unsafe_allow_html=True)
+    st.success("🎉 Nothing to follow up on!")
+
+st.divider()
 
 # --- CLOSED DOORS ---
-st.markdown('<div class="lc-section-title">✅ No action needed</div>', unsafe_allow_html=True)
-
+st.subheader("✅ No action needed")
 for door in closed_doors:
-    st.markdown(f"""
-    <div class="lc-card closed">
-      <div class="lc-card-top">
-        <span class="lc-card-from">{door["from"][:50]}</span>
-        <span class="lc-card-badge done">Handled</span>
-      </div>
-      <div class="lc-card-subject">{door["subject"][:80]}</div>
-      <div class="lc-card-date">{door["date"][:22]}</div>
-    </div>
-    """, unsafe_allow_html=True)
+    with st.expander(f"✉️ {door['from'][:50]} — {door['subject'][:60]}"):
+        st.write(f"**From:** {door['from']}")
+        st.write(f"**Subject:** {door['subject']}")
+        st.write(f"**Date:** {door['date']}")
 
-# --- FOOTER ---
-st.markdown("""
-<div class="lc-footer">
-  Built with ❤️ — powered by <span>Claude AI</span>
-</div>
-""", unsafe_allow_html=True)
+st.divider()
+st.caption("Built with ❤️ by you — powered by Claude AI")
