@@ -118,9 +118,10 @@ def is_open_door(subject, body):
         model="claude-haiku-4-5-20251001",
         max_tokens=10,
         messages=[{"role": "user", "content": f"""Read this email and reply with only one word.
-If this is a newsletter, promotion, notification, or automated email, say: CLOSED
-If a real person is ASKING for something or WAITING for a reply, say: OPEN
-If no human action is needed, say: CLOSED
+If the sender is a no-reply address, job board, bank, broker, news service, social network, delivery service, or any automated system, say: CLOSED
+If it is a newsletter, promotion, advertisement, job alert, market update, or notification, say: CLOSED
+If a real human being — a client, colleague, partner, or contact — is ASKING for something or WAITING for your reply, say: OPEN
+If no real human action is needed from you, say: CLOSED
 
 {content}"""}]
     )
